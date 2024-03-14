@@ -1,0 +1,17 @@
+High-Level Steps for a Conceptual Filter
+Extract JWT from the HTTP Request:
+
+Parse incoming HTTP request headers to extract the JWT, typically from the Authorization header.
+Fetch JWKS from the External Source:
+
+Make an HTTP request to the JWKS endpoint (e.g., login.microsoftonline.com) to fetch the JWKS. This requires your Envoy environment to allow outbound HTTP requests from WASM filters.
+Parse the JWKS and Extract the Public Key:
+
+Parse the JWKS response to extract the public keys. This step would involve JSON parsing.
+Validate the JWT:
+
+Decode the JWT (without verifying its signature) to extract the header and payload.
+Validate the JWT's claims according to your application's requirements (e.g., issuer, audience, and expiration).
+Ideally, verify the JWT's signature using one of the public keys from the JWKS. This step is crucial for security but also the most challenging to implement within a WASM filter due to the reasons mentioned earlier.
+
+Cryptographic Operations: As previously mentioned, performing cryptographic operations for JWT signature verification is complex within the TinyGo environment due to limited library support.
