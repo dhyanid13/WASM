@@ -1,52 +1,70 @@
 package main
 
 import (
-	"strings"
-
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+    "github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
 )
 
 func main() {
-	proxywasm.SetVMContext(&vmContext{})
+    proxywasm.SetVMContext(&vmContext{})
 }
 
 type vmContext struct{}
 
 func (vmContext) NewPluginContext(contextID uint32) proxywasm.PluginContext {
-	return &pluginContext{}
+    return &pluginContext{}
 }
 
 type pluginContext struct{}
 
 func (pluginContext) NewHttpContext(contextID uint32) proxywasm.HttpContext {
-	return &httpLifecycle{}
+    return &httpLifecycle{}
 }
 
 type httpLifecycle struct {
-	proxywasm.DefaultHttpContext
+    proxywasm.DefaultHttpContext
 }
 
-// Called when HTTP request headers are received.
-func (ctx *httpLifecycle) OnHttpRequestHeaders(numHeaders int, endOfStream bool) types.Action {
-	// Try to get the Authorization header from the incoming HTTP request.
-	authHeader, err := proxywasm.GetHttpRequestHeader("Authorization")
-	if err != nil {
-		proxywasm.LogError("failed to get Authorization header: " + err.Error())
-		return types.ActionContinue
-	}
+func (ctx *httpLifecycle) OnHttpRequestHeaders(numHeaders int, endOfStream bool) proxywasm.Action {
+    // Extract the JWT from the Authorization header
+    authHeader, err := proxywasm.GetHttpRequestHeader("Authorization")
+    if err != nil {
+        proxywasm.LogError("Could not get Authorization header: " + err.Error())
+        return proxywasm.ActionContinue
+    }
+    jwtToken := authHeader[len("Bearer "):] // Assuming the header format is "Bearer <token>"
+    proxywasm.LogInfo("Extracted JWT: " + jwtToken)
 
-	// The Authorization header is expected to be in the format "Bearer <token>".
-	// We split the header on whitespace and extract the token part.
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		proxywasm.LogError("Authorization header format is not 'Bearer <token>'")
-		return types.ActionContinue
-	}
-	jwtToken := parts[1]
+    // Fetch JWKS from a remote URL
+    ctx.fetchJWKS()
 
-	// Log the extracted JWT token.
-	proxywasm.LogInfo("Extracted JWT token: " + jwtToken)
+    return proxywasm.ActionContinue
+}
 
-	return types.ActionContinue
+func (ctx *httpLifecycle) fetchJWKS() {
+    const jwksURL = "/.well-known/jwks.json" // Path to the JWKS on the JWKS server
+    const jwksHost = "jwks.server.com"      // Hostname of the JWKS server
+    const clusterName = "jwks_cluster"       // Cluster name defined in Envoy configuration for the JWKS server
+
+    _, err := proxywasm.DispatchHttpCall(
+        clusterName,
+        [][2]string{
+            {"method", "GET"},
+            {"path", jwksURL},
+            {"Host", jwksHost},
+        },
+        nil, nil, 5000, ctx.onJWKSResponse,
+    )
+    if err != nil {
+        proxywasm.LogError("Failed to dispatch JWKS fetch request: " + err.Error())
+    }
+}
+
+func (ctx *httpLifecycle) onJWKSResponse(numHeaders int, bodySize int, numTrailers int) {
+    body, err := proxywasm.GetHttpCallResponseBody()
+    if err != nil {
+        proxywasm.LogError("Failed to get JWKS response body: " + err.Error())
+        return
+    }
+    proxywasm.LogInfo("Fetched JWKS: " + string(body))
+    // Here, you would add logic to validate the JWT with the fetched JWKS
 }
