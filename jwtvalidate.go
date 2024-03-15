@@ -3,7 +3,7 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/golang-jwt/jwt"
+    "github.com/golang-jwt/jwt/v4" // Ensure you're using the latest version
     "github.com/lestrrat-go/jwx/jwk"
 )
 
@@ -34,8 +34,8 @@ func main() {
         }
 
         // Find the corresponding key in the JWKS
-        keys := set.LookupKeyID(keyID)
-        if len(keys) == 0 {
+        keys, found := set.LookupKeyID(keyID)
+        if !found || len(keys) == 0 {
             return nil, fmt.Errorf("unable to find the appropriate key")
         }
 
