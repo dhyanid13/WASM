@@ -3,56 +3,56 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/golang-jwt/jwt/v4" // Ensure you're using the latest version
+    "github.com/golang-jwt/jwt/v4" // Ensure you're using the jwt/v4 for updated API
     "github.com/lestrrat-go/jwx/jwk"
 )
 
-// Replace YOUR_JWKS_URL with the actual URL to your JWKS endpoint
-const JWKS_URL = "YOUR_JWKS_URL"
+const JWKS_URL = "YOUR_JWKS_URL" // Replace with your JWKS URL
 
 func main() {
-    // Sample JWT token you want to validate
-    tokenString := "YOUR_JWT_TOKEN"
+    tokenString := "YOUR_JWT_TOKEN" // Replace with the JWT you want to validate
 
-    // Fetch JWKS from the endpoint
+    // Fetch JWKS
     set, err := jwk.Fetch(context.Background(), JWKS_URL)
     if err != nil {
-        panic("failed to parse JWK: " + err.Error())
+        panic(fmt.Errorf("failed to parse JWK: %w", err))
     }
 
-    // Parse the JWT token
+    // Parse and validate the JWT
     token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-        // Ensure the JWT algorithm matches the expected algorithm
+        // Confirm the JWT algorithm
         if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
             return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
         }
 
-        // Find the key ID in the token header
+        // Extract the key ID from the JWT header
         keyID, ok := token.Header["kid"].(string)
         if !ok {
-            return nil, fmt.Errorf("expecting JWT header to have string kid")
+            return nil, fmt.Errorf("expecting JWT header to have string 'kid'")
         }
 
-        // Find the corresponding key in the JWKS
-        keys, found := set.LookupKeyID(keyID)
-        if !found || len(keys) == 0 {
+        // Lookup the key in JWKS
+        key, found := set.LookupKeyID(keyID)
+        if !found {
             return nil, fmt.Errorf("unable to find the appropriate key")
         }
 
+        // Extract the public key
         var pubkey interface{}
-        if err := keys[0].Raw(&pubkey); err != nil {
+        if err := key.Raw(&pubkey); err != nil {
             return nil, fmt.Errorf("failed to get raw key: %v", err)
         }
+
         return pubkey, nil
     })
 
     if err != nil {
-        fmt.Println("Error parsing token:", err)
+        fmt.Printf("Error parsing token: %v\n", err)
         return
     }
 
     if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-        fmt.Println("JWT is valid. Claims:", claims)
+        fmt.Printf("JWT is valid. Claims: %v\n", claims)
     } else {
         fmt.Println("Invalid JWT")
     }
