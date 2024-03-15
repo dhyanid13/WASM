@@ -34,14 +34,16 @@ func main() {
         }
 
         // Find the corresponding key in the JWKS
-        if key := set.LookupKeyID(keyID); len(key) == 1 {
-            var pubkey interface{}
-            if err := key[0].Raw(&pubkey); err == nil {
-                return pubkey, nil
-            }
+        keys := set.LookupKeyID(keyID)
+        if len(keys) == 0 {
+            return nil, fmt.Errorf("unable to find the appropriate key")
         }
 
-        return nil, fmt.Errorf("unable to find the appropriate key")
+        var pubkey interface{}
+        if err := keys[0].Raw(&pubkey); err != nil {
+            return nil, fmt.Errorf("failed to get raw key: %v", err)
+        }
+        return pubkey, nil
     })
 
     if err != nil {
@@ -55,4 +57,3 @@ func main() {
         fmt.Println("Invalid JWT")
     }
 }
-
