@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gilbsgilbs/jwit"
 	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
@@ -35,7 +36,6 @@ func (ctx *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPlu
 			JWKSURL: JWKSURL,
 			TTL:     24 * time.Hour, // Or any TTL that fits your use case.
 		},
-		// Additional issuers can be added if necessary.
 	)
 	if err != nil {
 		proxywasm.LogErrorf("error creating JWT verifier: %v", err)
@@ -45,11 +45,15 @@ func (ctx *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPlu
 }
 
 func (ctx *pluginContext) NewHttpContext(contextID uint32) types.HttpContext {
-	return &httpLifecycle{}
+	// Pass the verifier to the httpLifecycle.
+	return &httpLifecycle{
+		verifier: ctx.verifier,
+	}
 }
 
 type httpLifecycle struct {
 	types.DefaultHttpContext
+	verifier *jwit.Verifier
 }
 
 func (ctx *httpLifecycle) OnHttpRequestHeaders(numHeaders int, endOfStream bool) types.Action {
@@ -60,20 +64,15 @@ func (ctx *httpLifecycle) OnHttpRequestHeaders(numHeaders int, endOfStream bool)
 		return types.ActionContinue // Or you may choose to terminate the request.
 	}
 
+	// Trim the "Bearer" prefix to extract the token
 	jwt := strings.TrimPrefix(authHeader, "Bearer ")
 	if jwt == authHeader {
 		proxywasm.LogError("JWT token not found in the Authorization header")
 		return types.ActionContinue // Or you may choose to terminate the request.
 	}
 
-	// At this point, you have the JWT token, and you can now validate it.
-	pluginCtx, ok := proxywasm.CurrentPluginContext().(*pluginContext)
-	if !ok {
-		proxywasm.LogError("failed to get plugin context")
-		return types.ActionContinue
-	}
-
-	isValid, err := pluginCtx.verifier.VerifyJWT(jwt)
+	// Validate the JWT
+	isValid, err := ctx.verifier.VerifyJWT(jwt)
 	if err != nil {
 		proxywasm.LogErrorf("JWT validation error: %v", err)
 		return types.ActionContinue // Or you may choose to terminate the request.
